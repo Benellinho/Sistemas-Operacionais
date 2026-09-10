@@ -1,0 +1,14 @@
+# Executáveis gerados pelos Makefiles
+/compilador_c/bin/
+/simulador_completo/bin/
+
+# Arquivos objeto intermediários da compilação C
+*.o
+
+# Assembly gerado pelo compilador C (preserva o runtime e os exemplos manuais)
+/compilador_c/exemplos/*.asm
+/compilador_c/rt/biblioteca.asm
+
+# Programas montados, recriados com make
+/compilador_c/exemplos/*.mob
+/simulador_completo/exemplos/*.mob
