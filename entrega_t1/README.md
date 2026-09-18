@@ -27,14 +27,3 @@ Digite `C` e Enter para executar, e `F` e Enter para sair. A saída aparece em `
 Após editar o C, repita a conversão, a montagem e a execução. O `make` da raiz prepara as ferramentas, mas não compila automaticamente esta pasta.
 
 O `.asm` e o `.mob` são arquivos gerados do mesmo programa. Não edite esse `.asm` para preservar mudanças: a próxima conversão do C o sobrescreve. O início anterior escrito diretamente em Assembly continua em `simulador_completo/exemplos/t1_aleatorio.asm` como referência independente.
-
-## Sugestão de commit para avaliação
-
-Nenhum commit foi realizado.
-
-```text
-feat: adiciona versao C do T1 na pasta entrega_t1
-
-- cria programa inicial com geracao pseudoaleatoria e impressao
-- documenta conversao para Assembly e montagem fora de exemplos
-```
