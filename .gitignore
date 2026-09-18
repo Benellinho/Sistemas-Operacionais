@@ -12,3 +12,6 @@
 # Programas montados, recriados com make
 /compilador_c/exemplos/*.mob
 /simulador_completo/exemplos/*.mob
+
+#arquivos temporarios
+tmp
