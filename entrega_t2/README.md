@@ -1,44 +1,41 @@
-# Entrega T2 — Parte II
+# Entrega T2 — Parte III
 
-Esta pasta contém a evolução da Parte I para bloqueios e espera entre
-processos, usando o Assembly do Mancha e a BIOS fornecida no repositório.
+Esta versão acrescenta preempção por relógio, fila circular de prontos,
+escalonamento round-robin, escalonamento por prioridade dinâmica e métricas.
 
-## Arquivos
+## Configuração
 
-- `kernel.asm`: tabela de processos, estados, quadros salvos, syscalls,
-  bloqueio de leitura, espera por PID e estado ocioso do kernel.
-- `testes.asm`: testes de erros de espera, acordamento após morte, leitura
-  bloqueante e compartilhamento da console.
-- `Makefile`: montagem do módulo `entrega_t2_parte_II.mob`.
+As configurações ficam em arquivos separados:
 
-## Estados e retornos
+- `config_round_robin.asm`: round-robin;
+- `config_prioridade.asm`: prioridade dinâmica;
+- `QUANTUM_TICKS`: quantidade de interrupções de relógio por fatia;
+- `INTERVALO_RELOGIO`: intervalo do hardware em instruções.
 
-Os estados usados são `LIVRE`, `PRONTO`, `EXECUTANDO`, `BLOQUEADO` e
-`MORTO`. Um processo bloqueado registra se espera leitura, escrita ou a morte
-de outro processo. Nesta parte, a escrita da BIOS é síncrona e sempre aceita o
-caractere, então `SO_ESCREVE` retorna imediatamente.
+O intervalo foi mantido maior que o custo do escalonador. Para comparar os
+algoritmos, execute os dois alvos com a mesma carga:
 
-`SO_ESPERA_PROC` retorna `0` quando o processo esperado já morreu ou quando o
-acordamento acontece. Retorna `-1` para PID inexistente, PID inválido ou o
-próprio PID.
-
-## Teste padrão
-
-Monte e execute:
+## Compilação e execução
 
 ```sh
 make
-make run
+make round-robin
+make prioridade
 ```
 
-Sem entrada, o leitor e o processo que espera por ele ficam bloqueados, e o
-kernel executa o quadro ocioso. Envie `Ex` no simulador para fornecer um
-caractere. A saída esperada é:
+O teste cria uma carga CPU-bound, uma carga de E/S e um processo que cria e
+espera um filho. O processo de E/S fica bloqueado até receber um caractere com
+`Ex` no simulador. Ao final do init, o kernel imprime processos criados, tempo
+total, tempo ocioso, preempções e turnaround/preempções por PID.
 
-```text
-TDIxW
-```
+## Implementação
 
-`T` confirma os erros de espera, `D` confirma a espera por um processo já
-morto, `I` vem do processo inicial, `x` é lido e ecoado pelo leitor e `W` é
-produzido pelo processo acordado após a morte do leitor.
+- `kernel.asm`: fila, quantum, trampolim do relógio, dois escalonadores e
+  contadores.
+- `testes.asm`: cargas CPU-bound, E/S e criação/espera.
+- `bios_mancha/src/bios.asm`: hooks opcionais para interrupções da console e
+  do disco.
+- `RELATORIO_PARTE_III.md`: modelo para registrar as execuções comparativas.
+
+`SO_ESCREVE` permanece síncrona porque a BIOS disponibilizada não expõe um
+estado de saída ocupado.

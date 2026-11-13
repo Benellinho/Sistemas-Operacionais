@@ -1,12 +1,8 @@
-; Testes da Parte II.
+; Cargas da Parte III.
 ;
-; Fluxo principal:
-;   1. init valida erros de SO_ESPERA_PROC;
-;   2. espera o processo curto, que morre e acorda init;
-;   3. espera novamente o mesmo PID já morto;
-;   4. cria um leitor e um processo que espera por ele;
-;   5. sem entrada, ambos ficam bloqueados e o kernel entra em ocioso;
-;   6. ao receber um caractere, o leitor é acordado e depois acorda o waiter.
+; O init cria três cargas e espera seus términos. O processo CPU-bound consome
+; instruções sem syscall para demonstrar preempção. O processo de E/S bloqueia
+; em SO_LE. O criador gera um filho, espera sua morte e termina.
 ;
         .equ    T_SO_LE             = 0
         .equ    T_SO_ESCREVE        = 1
@@ -16,118 +12,112 @@
 
 ; ---------------------------------------------------------------------- init
 
+; PID 1: CPU=2, E/S=3 e criador=4. O init só termina depois dos três.
 init_codigo:
-        ; PID inexistente deve produzir ERR_INVALIDO sem bloquear.
-        ld      r0, T_SO_ESPERA_PROC
-        ld      r1, 99
-        trap    7
-        cmp     r0, -1
-        jmpc    ne, teste_falhou
-
-        ; Esperar o próprio PID também deve produzir ERR_INVALIDO.
-        ld      r0, T_SO_ESPERA_PROC
-        ld      r1, 1
-        trap    7
-        cmp     r0, -1
-        jmpc    ne, teste_falhou
-
-        ld      r0, T_SO_ESCREVE
-        ld      r1, 'T'
-        trap    7
-
-        ; O processo curto recebe PID 2 e termina sozinho.
         ld      r0, T_SO_CRIA_PROC
-        ld      r1, processo_curto
-        trap    7
-
-        ; init bloqueia. A morte do PID 2 deve acordá-lo com retorno 0.
-        ld      r0, T_SO_ESPERA_PROC
-        ld      r1, 2
-        trap    7
-        cmp     r0, 0
-        jmpc    ne, teste_falhou
-
-        ; Esperar novamente um processo morto retorna imediatamente.
-        ld      r0, T_SO_ESPERA_PROC
-        ld      r1, 2
-        trap    7
-        cmp     r0, 0
-        jmpc    ne, teste_falhou
-
-        ld      r0, T_SO_ESCREVE
-        ld      r1, 'D'
-        trap    7
-
-        ; O leitor recebe PID 3 e o waiter recebe PID 4.
-        ld      r0, T_SO_CRIA_PROC
-        ld      r1, processo_leitor
+        ld      r1, processo_cpu_bound
         trap    7
 
         ld      r0, T_SO_CRIA_PROC
-        ld      r1, processo_espera
+        ld      r1, processo_io
+        trap    7
+
+        ld      r0, T_SO_CRIA_PROC
+        ld      r1, processo_criador
         trap    7
 
         ld      r0, T_SO_ESCREVE
         ld      r1, 'I'
         trap    7
 
-        ; Ao terminar, init deixa o leitor ser escalonado.
-        ld      r0, T_SO_MATA_PROC
-        ld      r1, 1
-        trap    7
-
-teste_falhou:
-        ld      r0, T_SO_ESCREVE
-        ld      r1, 'F'
-        trap    7
-teste_falhou_laco:
-        jmp     teste_falhou_laco
-
-; ------------------------------------------------------------ processo curto
-
-processo_curto:
-        ld      r0, T_SO_MATA_PROC
+        ld      r0, T_SO_ESPERA_PROC
         ld      r1, 2
         trap    7
-processo_curto_fim:
-        jmp     processo_curto_fim
 
-; ----------------------------------------------------------- processo leitor
-
-; PID 3. SO_LE deve bloquear quando a console estiver vazia. Depois de
-; acordado, o caractere retorna em r0 e é ecoado pela syscall de escrita.
-processo_leitor:
-        ld      r0, T_SO_LE
-        trap    7
-        ld      r1, r0
-
-        ld      r0, T_SO_ESCREVE
-        trap    7
-
-        ld      r0, T_SO_MATA_PROC
-        ld      r1, 3
-        trap    7
-processo_leitor_fim:
-        jmp     processo_leitor_fim
-
-; ------------------------------------------------------------- processo wait
-
-; PID 4. Fica bloqueado esperando o PID 3 e só continua depois da morte do
-; leitor. A saída esperada com entrada "x" é: TDIxW\n.
-processo_espera:
         ld      r0, T_SO_ESPERA_PROC
         ld      r1, 3
         trap    7
 
-        ld      r0, T_SO_ESCREVE
-        ld      r1, 'W'
+        ld      r0, T_SO_ESPERA_PROC
+        ld      r1, 4
         trap    7
+
         ld      r0, T_SO_ESCREVE
         ld      r1, 10
         trap    7
 
         ld      r0, T_SO_MATA_PROC
+        ld      r1, 1
+        trap    7
+
+init_fim:
+        jmp     init_fim
+
+; --------------------------------------------------------- CPU-bound PID 2
+
+; Não chama syscall durante o laço. Com INTERVALO_RELOGIO=4000 e
+; QUANTUM_TICKS=2, a execução precisa ser interrompida pelo relógio.
+processo_cpu_bound:
+        ld      r2, 12000
+cpu_bound_laco:
+        add     r2, -1
+        cmp     r2, 0
+        jmpc    gt, cpu_bound_laco
+
+        ld      r0, T_SO_ESCREVE
+        ld      r1, 'U'
+        trap    7
+        ld      r0, T_SO_MATA_PROC
+        ld      r1, 2
+        trap    7
+processo_cpu_bound_fim:
+        jmp     processo_cpu_bound_fim
+
+; -------------------------------------------------------------- E/S PID 3
+
+; Fica bloqueado até o operador enviar um caractere com Ex. O caractere é
+; ecoado e o processo termina, acordando o init.
+processo_io:
+        ld      r0, T_SO_LE
+        trap    7
+        ld      r1, r0
+        ld      r0, T_SO_ESCREVE
+        trap    7
+        ld      r0, T_SO_MATA_PROC
+        ld      r1, 3
+        trap    7
+processo_io_fim:
+        jmp     processo_io_fim
+
+; --------------------------------------------------------- criador PID 4
+
+; Cria o filho PID 5, espera sua morte e termina depois dele.
+processo_criador:
+        ld      r0, T_SO_CRIA_PROC
+        ld      r1, processo_filho
+        trap    7
+
+        ld      r0, T_SO_ESPERA_PROC
+        ld      r1, 5
+        trap    7
+
+        ld      r0, T_SO_ESCREVE
+        ld      r1, 'R'
+        trap    7
+        ld      r0, T_SO_MATA_PROC
         ld      r1, 4
         trap    7
-processo_espera_fim:
-        jmp     processo_espera_fim
+processo_criador_fim:
+        jmp     processo_criador_fim
+
+; -------------------------------------------------------------- filho PID 5
+
+processo_filho:
+        ld      r0, T_SO_ESCREVE
+        ld      r1, 'C'
+        trap    7
+        ld      r0, T_SO_MATA_PROC
+        ld      r1, 5
+        trap    7
+processo_filho_fim:
+        jmp     processo_filho_fim

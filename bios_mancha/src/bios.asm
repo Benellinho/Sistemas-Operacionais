@@ -72,6 +72,9 @@
 ;     console chama este hook depois de alimentar o buffer circular. O kernel
 ;     pode usá-lo para acordar processos bloqueados em SO_LE e, se a CPU
 ;     estiver ociosa, trocar o quadro antes do rete.
+;
+;   retomada_disco (dado, 1 palavra) -- se diferente de 0, o handler da
+;     interrupção 9 chama este hook antes de retornar.
 
         .equ    pilha_sistema = 0xF000
         .equ    pilha_nucleo  = 0xE000
@@ -288,6 +291,11 @@ bios_putc:
 ; exercício de continuação para o kernel.
 
 _bios_trata_disco:
+        ld      r0, (retomada_disco)
+        cmp     r0, 0
+        jmpc    eq, _bios_td_sem_hook
+        call    r0
+_bios_td_sem_hook:
         rete                                ; ver comentário acima: não é preciso fazer nada aqui
                                               ; na versão síncrona -- ponto de extensão para E/S assíncrona
 
@@ -455,6 +463,7 @@ tabela_syscalls:       .ds 16
 retomada_escalonador:  .dw 0
 contador_tiques:        .dw 0
 retomada_console:       .dw 0
+retomada_disco:         .dw 0
 _bios_disco_ultimo_erro:       .dw 0
 
 _bios_console_buf_cabeca:      .dw 0
