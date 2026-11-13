@@ -67,6 +67,11 @@
 ;   contador_tiques (dado, 1 palavra) -- incrementado a cada estouro do
 ;     relógio, antes de olhar retomada_escalonador; útil para temporizar
 ;     coisas mesmo sem multitarefa.
+;
+;   retomada_console (dado, 1 palavra) -- se diferente de 0, a rotina da
+;     console chama este hook depois de alimentar o buffer circular. O kernel
+;     pode usá-lo para acordar processos bloqueados em SO_LE e, se a CPU
+;     estiver ociosa, trocar o quadro antes do rete.
 
         .equ    pilha_sistema = 0xF000
         .equ    pilha_nucleo  = 0xE000
@@ -237,6 +242,11 @@ _bios_tc_grava_cauda:
         st      r1, (_bios_console_buf_n)
         jmp     _bios_tc_laco
 _bios_tc_fim:
+        ld      r0, (retomada_console)
+        cmp     r0, 0
+        jmpc    eq, _bios_tc_sem_hook
+        call    r0
+_bios_tc_sem_hook:
         ld      sp, bp
         pop     bp
         rete
@@ -444,6 +454,7 @@ _bios_bd_fim:
 tabela_syscalls:       .ds 16
 retomada_escalonador:  .dw 0
 contador_tiques:        .dw 0
+retomada_console:       .dw 0
 _bios_disco_ultimo_erro:       .dw 0
 
 _bios_console_buf_cabeca:      .dw 0
