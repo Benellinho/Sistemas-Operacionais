@@ -563,6 +563,80 @@ fila_insere_fim_ok:
 fila_insere_fim:
         ret
 
+; Remove um índice específico da fila, preservando a ordem dos demais itens.
+; Entrada: r0 = índice da tabela de processos.
+fila_remove_indice:
+        cmp     r0, 0
+        jmpc    lt, fila_remove_fim
+        cmp     r0, MAX_PROCESSOS
+        jmpc    ge, fila_remove_fim
+        st      r0, (temporario_resultado)
+        ld      r1, (fila_inicio)
+        ld      r2, (fila_n)
+        ld      r3, 0
+fila_remove_le_loop:
+        cmp     r2, 0
+        jmpc    le, fila_remove_copia
+        ld      r4, r1
+        add     r4, r4
+        add     r4, fila_prontos
+        ld      r0, (r4)
+        ld      r4, (temporario_resultado)
+        cmp     r0, r4
+        jmpc    eq, fila_remove_descarta
+
+        ld      r4, r3
+        add     r4, r4
+        add     r4, fila_temp
+        st      r0, (r4)
+        add     r3, 1
+        jmp     fila_remove_avanca
+
+fila_remove_descarta:
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, proc_na_fila
+        ld      r4, 0
+        st      r4, (r0)
+
+fila_remove_avanca:
+        add     r1, 1
+        cmp     r1, MAX_PROCESSOS
+        jmpc    lt, fila_remove_avanca_ok
+        ld      r1, 0
+fila_remove_avanca_ok:
+        add     r2, -1
+        jmp     fila_remove_le_loop
+
+fila_remove_copia:
+        ld      r1, 0
+fila_remove_copia_loop:
+        cmp     r1, r3
+        jmpc    ge, fila_remove_finaliza
+        ld      r4, r1
+        add     r4, r4
+        add     r4, fila_temp
+        ld      r0, (r4)
+        ld      r4, r1
+        add     r4, r4
+        add     r4, fila_prontos
+        st      r0, (r4)
+        add     r1, 1
+        jmp     fila_remove_copia_loop
+
+fila_remove_finaliza:
+        ld      r0, 0
+        st      r0, (fila_inicio)
+        ld      r0, r3
+        cmp     r0, MAX_PROCESSOS
+        jmpc    lt, fila_remove_fim_ok
+        ld      r0, 0
+fila_remove_fim_ok:
+        st      r0, (fila_fim)
+        st      r3, (fila_n)
+fila_remove_fim:
+        ret
+
 ; Remove e valida o primeiro item da fila.
 fila_tira_inicio:
 fila_tira_inicio_loop:
@@ -791,6 +865,16 @@ sys_cria_proc_impl:
         jmpc    eq, sys_cria_erro
         st      r0, (temporario_indice)
 
+        ; A entrada pode ter sido usada por um processo morto. Limpa todas
+        ; as métricas e garante que ela não seja considerada já enfileirada.
+        ld      r0, (temporario_indice)
+        call    metricas_limpa_processo
+        ld      r0, (temporario_indice)
+        add     r0, r0
+        add     r0, proc_na_fila
+        ld      r1, 0
+        st      r1, (r0)
+
         ; Marca a entrada como pronta.
         ld      r2, r0
         add     r2, r2
@@ -924,6 +1008,11 @@ sys_mata_nao_atual:
         call    metricas_entrada_estado
         ld      r0, (temporario_indice)
         call    metricas_registra_morte
+
+        ; Um processo morto pode ainda estar na fila se outro processo o
+        ; encerrou enquanto ele aguardava. Remova-o antes de liberar a entrada.
+        ld      r0, (temporario_indice)
+        call    fila_remove_indice
 
         call    acorda_esperando_processo
 
@@ -1159,14 +1248,108 @@ metricas_atualiza_tick:
         st      r0, (metricas_tempo_total)
         ld      r0, (processo_atual)
         cmp     r0, PROCESSO_OCIOSO
-        jmpc    eq, metricas_tick_ocioso
-        ld      r1, ESTADO_EXECUTANDO
-        call    metricas_incrementa_tempo
-        ret
-metricas_tick_ocioso:
+        jmpc    ne, metricas_tick_varre_processos
         ld      r0, (metricas_tempo_ocioso)
         add     r0, 1
         st      r0, (metricas_tempo_ocioso)
+metricas_tick_varre_processos:
+        ; O relógio avança para todas as entradas ocupadas, não só para o que
+        ; está executando. Assim PRONTO, BLOQUEADO e MORTO também são
+        ; acumulados enquanto outro processo usa a CPU ou ela fica ociosa.
+        ld      r3, 0
+metricas_tick_processo_loop:
+        cmp     r3, MAX_PROCESSOS
+        jmpc    ge, metricas_tick_fim
+        ld      r0, r3
+        add     r0, r0
+        add     r0, proc_estado
+        ld      r1, (r0)
+        cmp     r1, ESTADO_PRONTO
+        jmpc    eq, metricas_tick_conta_estado
+        cmp     r1, ESTADO_EXECUTANDO
+        jmpc    eq, metricas_tick_conta_estado
+        cmp     r1, ESTADO_BLOQUEADO
+        jmpc    eq, metricas_tick_conta_estado
+        cmp     r1, ESTADO_MORTO
+        jmpc    ne, metricas_tick_proximo
+metricas_tick_conta_estado:
+        ld      r0, r3
+        call    metricas_incrementa_tempo
+metricas_tick_proximo:
+        add     r3, 1
+        jmp     metricas_tick_processo_loop
+metricas_tick_fim:
+        ret
+
+; Zera as métricas associadas a uma entrada que será reutilizada.
+; Entrada: r0 = índice da tabela.
+metricas_limpa_processo:
+        st      r0, (temporario_resultado)
+
+        add     r0, r0
+        add     r0, metricas_entradas_pronto
+        ld      r1, 0
+        st      r1, (r0)
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_entradas_exec
+        st      r1, (r0)
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_entradas_bloqueado
+        st      r1, (r0)
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_entradas_morto
+        st      r1, (r0)
+
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_tempo_pronto_proc
+        st      r1, (r0)
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_tempo_exec_proc
+        st      r1, (r0)
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_tempo_bloqueado_proc
+        st      r1, (r0)
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_tempo_morto_proc
+        st      r1, (r0)
+
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_tempo_criacao
+        st      r1, (r0)
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_turnaround
+        st      r1, (r0)
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_preempcoes_processo
+        st      r1, (r0)
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_instante_desbloqueio
+        st      r1, (r0)
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_resposta_total
+        st      r1, (r0)
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_resposta_contagem
+        st      r1, (r0)
+        ld      r0, (temporario_resultado)
+        add     r0, r0
+        add     r0, metricas_aguarda_resposta
+        st      r1, (r0)
+
+        ld      r0, (temporario_resultado)
         ret
 
 metricas_processo_criado:
@@ -1315,12 +1498,30 @@ metricas_relatorio_loop:
         add     r0, metricas_preempcoes_processo
         ld      r0, (r0)
         call    bios_imprime_dec
-        ld      r0, msg_metricas_exec
+
+        ld      r0, msg_metricas_pronto
         call    bios_imprime
         ld      r2, (temporario_indice)
         ld      r0, r2
         add     r0, r0
-        add     r0, metricas_tempo_exec_proc
+        add     r0, metricas_entradas_pronto
+        ld      r0, (r0)
+        call    bios_imprime_dec
+        ld      r0, msg_metricas_pronto_tempo
+        call    bios_imprime
+        ld      r2, (temporario_indice)
+        ld      r0, r2
+        add     r0, r0
+        add     r0, metricas_tempo_pronto_proc
+        ld      r0, (r0)
+        call    bios_imprime_dec
+
+        ld      r0, msg_metricas_bloqueado_n
+        call    bios_imprime
+        ld      r2, (temporario_indice)
+        ld      r0, r2
+        add     r0, r0
+        add     r0, metricas_entradas_bloqueado
         ld      r0, (r0)
         call    bios_imprime_dec
         ld      r0, msg_metricas_bloqueado
@@ -1330,6 +1531,58 @@ metricas_relatorio_loop:
         add     r0, r0
         add     r0, metricas_tempo_bloqueado_proc
         ld      r0, (r0)
+        call    bios_imprime_dec
+        ld      r0, msg_metricas_exec_n
+        call    bios_imprime
+        ld      r2, (temporario_indice)
+        ld      r0, r2
+        add     r0, r0
+        add     r0, metricas_entradas_exec
+        ld      r0, (r0)
+        call    bios_imprime_dec
+        ld      r0, msg_metricas_exec
+        call    bios_imprime
+        ld      r2, (temporario_indice)
+        ld      r0, r2
+        add     r0, r0
+        add     r0, metricas_tempo_exec_proc
+        ld      r0, (r0)
+        call    bios_imprime_dec
+        ld      r0, msg_metricas_morto_n
+        call    bios_imprime
+        ld      r2, (temporario_indice)
+        ld      r0, r2
+        add     r0, r0
+        add     r0, metricas_entradas_morto
+        ld      r0, (r0)
+        call    bios_imprime_dec
+        ld      r0, msg_metricas_morto
+        call    bios_imprime
+        ld      r2, (temporario_indice)
+        ld      r0, r2
+        add     r0, r0
+        add     r0, metricas_tempo_morto_proc
+        ld      r0, (r0)
+        call    bios_imprime_dec
+        ld      r0, msg_metricas_resposta
+        call    bios_imprime
+        ld      r2, (temporario_indice)
+        ld      r0, r2
+        add     r0, r0
+        add     r0, metricas_resposta_contagem
+        ld      r1, (r0)
+        cmp     r1, 0
+        jmpc    eq, metricas_relatorio_resposta_zero
+        ld      r2, (temporario_indice)
+        ld      r0, r2
+        add     r0, r0
+        add     r0, metricas_resposta_total
+        ld      r0, (r0)
+        div     r0, r1
+        jmp     metricas_relatorio_resposta_imprime
+metricas_relatorio_resposta_zero:
+        ld      r0, 0
+metricas_relatorio_resposta_imprime:
         call    bios_imprime_dec
         ld      r0, msg_metricas_nl
         call    bios_imprime
@@ -1375,6 +1628,7 @@ quadro_interrompido:.dw     0
 
 quantum_restante:   .dw     QUANTUM_TICKS
 fila_prontos:       .ds     MAX_PROCESSOS
+fila_temp:          .ds     MAX_PROCESSOS
 fila_inicio:        .dw     0
 fila_fim:           .dw     0
 fila_n:             .dw     0
@@ -1414,7 +1668,14 @@ msg_metricas_relogio:   .db " int_relogio=", 0
 msg_metricas_proc:      .db "PID ", 0
 msg_metricas_turnaround:.db " turnaround=", 0
 msg_metricas_preemp_proc:.db " preempcoes=", 0
+msg_metricas_pronto:     .db " pronto_n=", 0
+msg_metricas_pronto_tempo:.db " pronto_t=", 0
+msg_metricas_bloqueado_n:.db " bloqueado_n=", 0
 msg_metricas_exec:      .db " exec=", 0
+msg_metricas_exec_n:     .db " exec_n=", 0
+msg_metricas_morto_n:    .db " morto_n=", 0
+msg_metricas_morto:      .db " morto=", 0
+msg_metricas_resposta:   .db " resposta_media=", 0
 msg_metricas_bloqueado: .db " bloqueado=", 0
 msg_metricas_nl:        .db 10, 0
 

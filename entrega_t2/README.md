@@ -9,6 +9,8 @@ As configurações ficam em arquivos separados:
 
 - `config_round_robin.asm`: round-robin;
 - `config_prioridade.asm`: prioridade dinâmica;
+- `config_round_robin_q4.asm` e `config_prioridade_q4.asm`: as mesmas
+  configurações com quantum de 4 tiques;
 - `QUANTUM_TICKS`: quantidade de interrupções de relógio por fatia;
 - `INTERVALO_RELOGIO`: intervalo do hardware em instruções.
 
@@ -21,6 +23,8 @@ algoritmos, execute os dois alvos com a mesma carga:
 make
 make round-robin
 make prioridade
+make round-robin-q4
+make prioridade-q4
 ```
 
 O teste cria uma carga CPU-bound, uma carga de E/S e um processo que cria e

@@ -20,6 +20,18 @@ Preencha os valores exibidos pelo relatório do kernel:
 | 3 |  |  |  |  |
 | 4 |  |  |  |  |
 
+## Métricas por processo
+
+Preencha uma tabela para cada execução:
+
+| PID | Turnaround | Preempções | Pronto (entradas/tempo) | Bloqueado (entradas/tempo) | Executando (entradas/tempo) | Morto (entradas/tempo) | Resposta média |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+|  |  |  |  |  |  |  |  |
+
+O tempo em `MORTO` representa o período em que a entrada permaneceu ocupada
+após o término, até ser reutilizada ou até o fim da execução. O relatório do
+kernel imprime esses valores junto com as métricas globais.
+
 ## Análise
 
 - Quantuns menores tendem a aumentar a quantidade de preempções e o custo do
